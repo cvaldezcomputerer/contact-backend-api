@@ -1,0 +1,13 @@
+# .gitignore
+node_modules/
+.env
+npm-debug.log
+*.log
+# Docker specific ignores
+.dockerignore # Don't track the .dockerignore file itself if you prefer
+!Dockerfile # Exception: Do track Dockerfile
+!docker-compose.yml # Exception: Do track docker-compose.yml
+# For Docker volumes, they are often managed by Docker itself,
+# but if they create any local directories, exclude them.
+# For example, if 'db-data' created a directory in your project root:
+# db-data/
