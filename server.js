@@ -1,20 +1,15 @@
 // server.js
-require("dotenv").config(); // Load environment variables from .env file
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { Pool } = require("pg"); // Import Pool from 'pg' library
+const { Pool } = require("pg");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// PostgreSQL Connection Pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Optional: Add SSL configuration for production, if your DB requires it (DigitalOcean's does for managed DBs)
-  // ssl: {
-  //   rejectUnauthorized: false // Be cautious with this in production, better to provide CA cert
-  // }
 });
 
 pool.on("error", (err, client) => {
@@ -22,22 +17,37 @@ pool.on("error", (err, client) => {
   process.exit(-1);
 });
 
-// Middleware
-app.use(express.json()); // To parse JSON request bodies
-app.use(express.urlencoded({ extended: true })); // To parse URL-encoded request bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Configure CORS
+// --- IMPORTANT: Updated CORS Configuration ---
+let allowedOrigins = [];
+if (process.env.FRONTEND_URL) {
+  allowedOrigins = process.env.FRONTEND_URL.split(",").map((url) => url.trim());
+} else {
+  // Fallback for local dev if FRONTEND_URL is not set
+  allowedOrigins = ["http://localhost:3001"];
+}
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3001",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    // or requests from the allowedOrigins list
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+// --- End Updated CORS Configuration ---
 
-// Basic route for testing server
 app.get("/", async (req, res) => {
   try {
     const client = await pool.connect();
-    const result = await client.query("SELECT NOW()"); // Simple query to test DB connection
+    const result = await client.query("SELECT NOW()");
     client.release();
     res
       .status(200)
@@ -50,11 +60,9 @@ app.get("/", async (req, res) => {
   }
 });
 
-// Contact Form POST route
 app.post("/api/contact", async (req, res) => {
   const { name, email, message } = req.body;
 
-  // Basic Validation (you'd want more robust validation in production)
   if (!name || !email || !message) {
     return res
       .status(400)
@@ -81,8 +89,10 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
-// Start the server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Database URL: ${process.env.DATABASE_URL}`);
+  if (process.env.FRONTEND_URL) {
+    console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
+  }
 });
