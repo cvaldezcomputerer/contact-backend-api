@@ -61,19 +61,19 @@ app.get("/", async (req, res) => {
 });
 
 app.post("/api/contact", async (req, res) => {
-  const { name, email, message } = req.body;
+  const { name, email, subject, message } = req.body;
 
-  if (!name || !email || !message) {
+  if (!name || !email || !subject || !message) {
     return res
       .status(400)
-      .json({ error: "Name, email, and message are required." });
+      .json({ error: "Name, email, subject, and message are required." });
   }
 
   try {
     const client = await pool.connect();
     const result = await client.query(
-      "INSERT INTO contact_messages (name, email, message) VALUES ($1, $2, $3) RETURNING *",
-      [name, email, message]
+      "INSERT INTO contact_messages (name, email, subject, message) VALUES ($1, $2, $3, $4) RETURNING *",
+      [name, email, subject, message]
     );
     client.release();
     console.log("Saved contact message:", result.rows[0]);
