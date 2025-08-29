@@ -61,7 +61,11 @@ app.get("/", async (req, res) => {
 });
 
 app.post("/api/contact", async (req, res) => {
-  const { name, email, subject, message } = req.body;
+  const { name, email, subject, message, trap } = req.body;
+
+  if (trap) {
+    return res.status(400).json({ error: "Form submission blocked." });
+  }
 
   if (!name || !email || !subject || !message) {
     return res
@@ -77,12 +81,10 @@ app.post("/api/contact", async (req, res) => {
     );
     client.release();
     console.log("Saved contact message:", result.rows[0]);
-    res
-      .status(201)
-      .json({
-        message: "Contact form submitted successfully!",
-        data: result.rows[0],
-      });
+    res.status(201).json({
+      message: "Contact form submitted successfully!",
+      data: result.rows[0],
+    });
   } catch (err) {
     console.error("Error saving contact message:", err.message);
     res.status(500).json({ error: "Failed to submit contact form." });
