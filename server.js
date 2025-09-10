@@ -4,6 +4,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
+const nodemailer = require("nodemailer"); // ADD THIS LINE
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,6 +17,27 @@ pool.on("error", (err, client) => {
   console.error("Unexpected error on idle client", err);
   process.exit(-1);
 });
+
+// --- ADD NODEMAILER TRANSPORTER SETUP HERE ---
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: parseInt(process.env.EMAIL_PORT || "587", 10),
+  secure: process.env.EMAIL_SECURE === "true", // Use `true` if port 465, `false` if port 587
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Verify Nodemailer transporter connection (optional, good for debugging)
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error("Nodemailer transporter connection failed:", error);
+  } else {
+    console.log("Nodemailer transporter ready to send mail.");
+  }
+});
+// --- END NODEMAILER TRANSPORTER SETUP ---
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -33,9 +55,11 @@ const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     // or requests from the allowedOrigins list
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      // Corrected from indexOf for consistency
       callback(null, true);
     } else {
+      console.warn(`CORS: Origin '${origin}' not allowed.`);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -63,10 +87,13 @@ app.get("/", async (req, res) => {
 app.post("/api/contact", async (req, res) => {
   const { name, email, subject, message, trap } = req.body;
 
+  // Honeypot Check (no change)
   if (trap) {
+    console.warn("Bot detected via honeypot field!");
     return res.status(400).json({ error: "Form submission blocked." });
   }
 
+  // Basic Validation (no change)
   if (!name || !email || !subject || !message) {
     return res
       .status(400)
@@ -80,13 +107,45 @@ app.post("/api/contact", async (req, res) => {
       [name, email, subject, message]
     );
     client.release();
-    console.log("Saved contact message:", result.rows[0]);
+    const savedMessage = result.rows[0]; // Store the returned row for email
+    console.log("Saved contact message:", savedMessage);
+
+    // --- ADD EMAIL NOTIFICATION LOGIC HERE ---
+    const mailOptions = {
+      from: process.env.EMAIL_USER, // Sender address (your Gmail)
+      to: process.env.EMAIL_RECIPIENT, // Recipient address (your personal email)
+      subject: `New Contact Form Submission: ${subject}`, // Subject line
+      html: `
+        <p>You have received a new message from your contact form on doggybloggy.com!</p>
+        <h3>Message Details:</h3>
+        <ul>
+          <li><strong>Name:</strong> ${name}</li>
+          <li><strong>Email:</strong> ${email}</li>
+          <li><strong>Subject:</strong> ${subject}</li>
+          <li><strong>Message:</strong><br>${message}</li>
+        </ul>
+        <p>Submitted at: ${savedMessage.submitted_at}</p>
+      `, // HTML body
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email notification:", error);
+      } else {
+        console.log("Email notification sent:", info.response);
+      }
+    });
+    // --- END EMAIL NOTIFICATION LOGIC ---
+
     res.status(201).json({
       message: "Contact form submitted successfully!",
-      data: result.rows[0],
+      data: savedMessage,
     });
   } catch (err) {
-    console.error("Error saving contact message:", err.message);
+    console.error(
+      "Error saving contact message or sending email:",
+      err.message
+    ); // Updated error message
     res.status(500).json({ error: "Failed to submit contact form." });
   }
 });
@@ -97,4 +156,6 @@ app.listen(port, () => {
   if (process.env.FRONTEND_URL) {
     console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
   }
+  // Check Nodemailer status on app start (optional)
+  // If transporter.verify had an error, it's logged above.
 });
